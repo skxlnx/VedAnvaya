@@ -72,6 +72,17 @@ class ApiSettings(BaseSettings):
     #: rest of this object because it is a deployment path, not an ingestion setting.
     data_dir: Path = Path("data")
 
+    #: Limits on POST /api/v1/ask, which is billed per call. Named with the ``VEDAGRAPH_``
+    #: prefix, unlike the rest of this object, because they belong with the LLM settings an
+    #: operator already sets under that prefix. A daily cap of 0 refuses every question.
+    ask_rate_limit_per_minute: int = Field(
+        default=10, ge=1, validation_alias="VEDAGRAPH_ASK_RATE_LIMIT_PER_MINUTE"
+    )
+    ask_daily_cap: int = Field(default=1000, ge=0, validation_alias="VEDAGRAPH_ASK_DAILY_CAP")
+    #: How many proxies sit in front of this process and append to ``X-Forwarded-For``. Sets
+    #: which entry is read as the client address; see ``ratelimit.client_ip``.
+    trusted_proxies: int = Field(default=1, ge=1, validation_alias="VEDAGRAPH_TRUSTED_PROXIES")
+
     #: Seconds before a Cypher call is abandoned. A product read that takes longer than
     #: this is a defect, not a slow query worth waiting for.
     neo4j_query_timeout_seconds: float = Field(default=15.0, gt=0, le=120)

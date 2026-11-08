@@ -16,13 +16,14 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 
 from vedagraph.api.ask.models import AskRequest, AskResponse
 from vedagraph.api.ask.service import AskService
 from vedagraph.api.dependencies import RepositoryDep
-from vedagraph.api.errors import COMMON_ERROR_RESPONSES, ApiError
+from vedagraph.api.errors import COMMON_ERROR_RESPONSES, ApiError, ErrorBody
+from vedagraph.api.ratelimit import AskLimiter, client_ip
 from vedagraph.llm.errors import (
     LLMAuthenticationError,
     LLMConfigurationError,
@@ -84,10 +85,25 @@ report which one served the request. No credential is ever returned.
     response_model=AskResponse,
     responses={
         **COMMON_ERROR_RESPONSES,
+        429: {
+            "model": ErrorBody,
+            "description": "Per-address rate limit or the daily cap on LLM calls was hit.",
+            "headers": {
+                "Retry-After": {
+                    "description": "Seconds until a retry could succeed.",
+                    "schema": {"type": "integer"},
+                }
+            },
+        },
         503: {"description": "The graph or the synthesis backend is unavailable."},
     },
 )
-def ask_endpoint(repository: RepositoryDep, request: AskRequest) -> AskResponse:
+def ask_endpoint(
+    repository: RepositoryDep, request: AskRequest, http_request: Request
+) -> AskResponse:
+    limiter: AskLimiter = http_request.app.state.ask_limiter
+    limiter.check_ip(client_ip(http_request, limiter.trusted_proxies))
+
     try:
         provider = get_llm_provider()
     except LLMConfigurationError as exc:
@@ -99,6 +115,9 @@ def ask_endpoint(repository: RepositoryDep, request: AskRequest) -> AskResponse:
             "VEDAGRAPH_LLM_API_KEY in the deployment environment.",
         ) from exc
 
+    # After the provider resolves: an unconfigured deployment makes no call and spends none
+    # of the cap.
+    limiter.charge_daily()
     service = AskService(repository, provider)
 
     try:

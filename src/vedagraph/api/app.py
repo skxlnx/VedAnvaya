@@ -24,6 +24,7 @@ from vedagraph.api.config import (
 )
 from vedagraph.api.errors import install_error_handlers
 from vedagraph.api.models.common import ApiModel
+from vedagraph.api.ratelimit import AskLimiter
 from vedagraph.api.repositories.neo4j_repository import Neo4jRepository
 
 logger = logging.getLogger(__name__)
@@ -262,6 +263,12 @@ def create_app() -> FastAPI:
     )
     install_error_handlers(app)
     app.add_middleware(_HeadMethodMiddleware)
+    # Per app, not per module, so each test's app starts with empty counters.
+    app.state.ask_limiter = AskLimiter(
+        per_minute=settings.ask_rate_limit_per_minute,
+        daily_cap=settings.ask_daily_cap,
+        trusted_proxies=settings.trusted_proxies,
+    )
 
     health = APIRouter(tags=["Health"])
 
