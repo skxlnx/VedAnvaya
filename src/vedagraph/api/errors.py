@@ -37,10 +37,13 @@ class ApiError(Exception):
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
     code: str = "INTERNAL_ERROR"
 
-    def __init__(self, detail: str, *, hint: str | None = None) -> None:
+    def __init__(
+        self, detail: str, *, hint: str | None = None, headers: dict[str, str] | None = None
+    ) -> None:
         super().__init__(detail)
         self.detail = detail
         self.hint = hint
+        self.headers = headers
 
     def body(self) -> ErrorBody:
         return ErrorBody(error=self.code, detail=self.detail, hint=self.hint)
@@ -130,7 +133,9 @@ async def _api_error_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ApiError)
     if exc.status_code >= 500:
         logger.error("api error %s: %s", exc.code, exc.detail)
-    return JSONResponse(status_code=exc.status_code, content=exc.body().model_dump())
+    return JSONResponse(
+        status_code=exc.status_code, content=exc.body().model_dump(), headers=exc.headers
+    )
 
 
 async def _validation_handler(_: Request, exc: Exception) -> JSONResponse:
